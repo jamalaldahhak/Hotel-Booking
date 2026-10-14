@@ -1,70 +1,95 @@
 
+import mongoose from "mongoose";
 import * as reservationService from "../services/reservationService.js";
 
-export const getAvailableRooms = async (req, res, next) => {
+export async function checkAvailability(req, res, next) {
   try {
     const { checkIn, checkOut } = req.query;
+
+    if (!checkIn || !checkOut) {
+      return res.status(400).json({
+        success: false,
+        message: "checkIn and checkOut are required",
+      });
+    }
 
     const rooms = await reservationService.getAvailableRooms(
       checkIn,
       checkOut
     );
 
-    res.status(200).json({
-      results: rooms.length,
+    return res.status(200).json({
+      success: true,
+      count: rooms.length,
       data: rooms,
     });
   } catch (error) {
     next(error);
   }
+}
+const fail = (message, status) => {
+  const error = new Error(message);
+  error.status = status;
+  throw error;
 };
 
-export const createReservation = async (req, res, next) => {
+
+export async function createReservation(req, res, next) {
   try {
     const reservation =
       await reservationService.createReservation(req.body);
 
-    res.status(201).json({
+    return res.status(201).json({
+      success: true,
       message: "Reservation created successfully",
       data: reservation,
     });
   } catch (error) {
     next(error);
   }
-};
+}
 
-export const getAllReservations = async (req, res, next) => {
+
+export async function getReservations(req, res, next) {
   try {
-    const reservations =
-      await reservationService.getAllReservations();
+    const result = await reservationService.getReservations(
+      req.query
+    );
 
-    res.status(200).json({
-      results: reservations.length,
-      data: reservations,
+    return res.status(200).json({
+      success: true,
+      ...result,
     });
   } catch (error) {
     next(error);
   }
-};
+}
 
-export const getReservationById = async (req, res, next) => {
+export async function getReservationById(req, res, next) {
   try {
     const reservation =
       await reservationService.getReservationById(req.params.id);
 
-    res.status(200).json({ data: reservation });
+    return res.status(200).json({
+      success: true,
+      data: reservation,
+    });
   } catch (error) {
     next(error);
   }
-};
+}
 
-export const deleteReservation = async (req, res, next) => {
+export async function cancelReservation(req, res, next) {
   try {
-    const result =
-      await reservationService.deleteReservation(req.params.id);
+    const reservation =
+      await reservationService.cancelReservation(req.params.id);
 
-    res.status(200).json(result);
+    return res.status(200).json({
+      success: true,
+      message: "Reservation cancelled successfully",
+      data: reservation,
+    });
   } catch (error) {
     next(error);
   }
-};
+}

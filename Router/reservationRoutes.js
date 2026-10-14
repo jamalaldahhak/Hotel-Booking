@@ -1,23 +1,24 @@
 
-import { Router } from "express";
+import express from "express";
+
 import {
-  getAvailableRooms,
+  checkAvailability,
   createReservation,
-  getAllReservations,
+  getReservations,
   getReservationById,
-  deleteReservation,
+  cancelReservation,
 } from "../controllers/reservationController.js";
 
-const router = Router();
+const router = express.Router();
 
-router.get("/available", getAvailableRooms);
+router.get("/availability", checkAvailability);
 
 router.route("/")
-  .get(getAllReservations)
-  .post(createReservation);
+  .post(createReservation)
+  .get(getReservations);
 
-router.route("/:id")
-  .get(getReservationById)
-  .delete(deleteReservation);
+router.get("/:id", getReservationById);
+
+router.patch("/:id/cancel", cancelReservation);
 
 export default router;

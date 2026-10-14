@@ -47,6 +47,52 @@ const overlapFilter = (start, end) => ({
   checkOut: { $gt: start },
 });
 
+
+export async function getReservations(query = {}) {
+  const page = Math.max(
+    1,
+    Number.parseInt(query.page, 10) || 1
+  );
+
+  const limit = Math.min(
+    100,
+    Math.max(1, Number.parseInt(query.limit, 10) || 10)
+  );
+
+  const filter = {};
+
+  if (query.status) {
+    filter.status = query.status;
+  }
+
+  if (query.roomId) {
+    filter.roomId = query.roomId;
+  }
+
+  if (query.customerPhone) {
+    filter.customerPhone = query.customerPhone.trim();
+  }
+
+  const [reservations, total] = await Promise.all([
+    Reservation.find(filter)
+      .populate("roomId", "roomNumber roomType roomCategory")
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit),
+
+    Reservation.countDocuments(filter),
+  ]);
+
+  return {
+    reservations,
+    pagination: {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
+}
 export const getAvailableRooms = async (checkIn, checkOut) => {
   const { start, end } = getDateRange(checkIn, checkOut);
 
@@ -59,34 +105,35 @@ export const getAvailableRooms = async (checkIn, checkOut) => {
   }).sort({ roomNumber: 1 });
 };
 
+
+
 export const createReservation = async (data) => {
+
   const {
     roomId,
-    customerName,
-    customerNumber,
+    customerFullName,
+    customerPhone,
     checkIn,
     checkOut,
   } = data;
 
-  if (!mongoose.isValidObjectId(roomId)) {
-    fail("Invalid room ID", 400);
-  }
-
   if (
-    typeof customerName !== "string" ||
-    customerName.trim().length < 2 ||
-    customerName.trim().length > 150
+    typeof customerFullName !== "string" ||
+    customerFullName.trim().length < 2 ||
+    customerFullName.trim().length > 100
   ) {
     fail("Valid customer name is required", 400);
   }
 
+  // التحقق من رقم الهاتف
   if (
-    typeof customerNumber !== "string" ||
-    !/^\+?[0-9\s()-]{7,20}$/.test(customerNumber.trim())
+    typeof customerPhone !== "string" ||
+    !/^\+?[0-9\s()-]{7,20}$/.test(customerPhone.trim())
   ) {
-    fail("Valid customer number is required", 400);
+    fail("Valid customer phone is required", 400);
   }
 
+  // التحقق من التاريخين وحساب عدد الليالي
   const { start, end, totalNights } = getDateRange(
     checkIn,
     checkOut
@@ -99,9 +146,10 @@ export const createReservation = async (data) => {
     fail("Room not found", 404);
   }
 
-  // منع التداخل بين الحجوزات الموجودة
+  // التأكد من عدم وجود حجز متداخل غير ملغى
   const conflict = await Reservation.exists({
     roomId: room._id,
+    status: { $in: ["Confirmed", "CheckedIn"] },
     ...overlapFilter(start, end),
   });
 
@@ -109,21 +157,24 @@ export const createReservation = async (data) => {
     fail("Room is already booked for these dates", 409);
   }
 
+  // حساب السعر الإجمالي من سعر الغرفة
   const totalPrice = Number(
     (totalNights * room.pricePerNight).toFixed(2)
   );
 
+  // حفظ الحجز بالأسماء المطابقة للـ Model
   return Reservation.create({
     roomId: room._id,
-    customerName: customerName.trim(),
-    customerNumber: customerNumber.trim(),
+    customerFullName: customerFullName.trim(),
+    customerPhone: customerPhone.trim(),
     checkIn: start,
     checkOut: end,
-    totalNights,
+    nights: totalNights,
     pricePerNight: room.pricePerNight,
     totalPrice,
   });
 };
+
 
 export const getAllReservations = async () => {
   return Reservation.find()

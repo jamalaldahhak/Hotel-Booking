@@ -6,14 +6,13 @@ import reservationRouter from "./Router/reservationRoutes.js";
 const app = express();
 
 app.use(express.json());
-
-app.get("/", (req, res) => {
+app.use("/api/rooms", roomRouter);
+app.get("/api", (req, res) => {
   res.status(200).json({
     message: "Hotel Booking API is running",
   });
 });
 
-app.use("/api/rooms", roomRouter);
 app.use("/api/reservations", reservationRouter);
 
 app.use((req, res) => {
