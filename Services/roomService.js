@@ -1,5 +1,7 @@
+
 import mongoose from "mongoose";
 import Room from "../Model/Room.js";
+import Reservation from "../Model/Reservation.js";
 
 const allowedSortFields = [
   "roomNumber",
@@ -9,12 +11,29 @@ const allowedSortFields = [
   "createdAt",
 ];
 
+// التحقق من وجود حجوزات حالية أو مستقبلية للغرفة
+const checkRoomReservations = async (roomId) => {
+  const reservation = await Reservation.findOne({
+    roomId,
+    status: { $in: ["Confirmed", "CheckedIn"] },
+    checkOut: { $gt: new Date() },
+  });
+
+  if (reservation) {
+    const error = new Error(
+      "Cannot modify or delete a room with active or future reservations",
+    );
+    error.statusCode = 409;
+    throw error;
+  }
+};
+
 export const getAllRoomsService = async ({
   sortField = "roomNumber",
   sortOrder = "ASC",
   start = 0,
   end = 10,
-}) => {
+} = {}) => {
   if (!allowedSortFields.includes(sortField)) {
     const error = new Error("Invalid sort field");
     error.statusCode = 400;
@@ -53,8 +72,7 @@ export const getRoomByIdService = async (id) => {
 };
 
 export const createRoomService = async (data) => {
-  const room = await Room.create(data);
-  return room;
+  return Room.create(data);
 };
 
 export const updateRoomService = async (id, data) => {
@@ -72,22 +90,13 @@ export const updateRoomService = async (id, data) => {
     throw error;
   }
 
-//   const reservation = await Reservation.findOne({
-//     roomId: room._id,
-//   });
+  // منع تعديل الغرفة إذا كان عليها حجز حالي أو مستقبلي
+  await checkRoomReservations(room._id);
 
-//   if (reservation) {
-//     const error = new Error("Cannot update a room that has reservations");
-//     error.statusCode = 409;
-//     throw error;
-//   }
-
-  const updatedRoom = await Room.findByIdAndUpdate(id, data, {
+  return Room.findByIdAndUpdate(id, data, {
     new: true,
     runValidators: true,
   });
-
-  return updatedRoom;
 };
 
 export const deleteRoomService = async (id) => {
@@ -105,20 +114,8 @@ export const deleteRoomService = async (id) => {
     throw error;
   }
 
-  const today = new Date();
-
-//   const reservation = await Reservation.findOne({
-//     roomId: room._id,
-//     checkOut: { $gt: today },
-//   });
-
-//   if (reservation) {
-//     const error = new Error(
-//       "Cannot delete a room with a current or future reservation",
-//     );
-//     error.statusCode = 409;
-//     throw error;
-//   }
+  // منع حذف الغرفة إذا كان عليها حجز حالي أو مستقبلي
+  await checkRoomReservations(room._id);
 
   await Room.findByIdAndDelete(id);
 

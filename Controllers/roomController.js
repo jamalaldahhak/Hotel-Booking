@@ -44,35 +44,19 @@ const handleError = (res, error) => {
 
 export const getRoomsController = async (req, res) => {
   try {
-    const start = Number(req.query._start ?? 0);
-    const end = Number(req.query._end ?? start + 10);
     const sortField = req.query._sort || "roomNumber";
     const sortOrder = req.query._order || "ASC";
 
-    if (
-      !Number.isInteger(start) ||
-      !Number.isInteger(end) ||
-      start < 0 ||
-      end <= start ||
-      !["ASC", "DESC"].includes(sortOrder)
-    ) {
+    if (!["ASC", "DESC"].includes(sortOrder)) {
       return res.status(400).json({
         message: "Invalid pagination or sorting parameters",
       });
     }
 
-    const { rooms, total } = await getAllRoomsService({
+    const rooms = await getAllRoomsService({
       sortField,
       sortOrder,
-      start,
-      end,
     });
-
-    res.setHeader(
-      "Content-Range",
-      `rooms ${start}-${start + rooms.length - 1}/${total}`,
-    );
-    res.setHeader("Access-Control-Expose-Headers", "Content-Range");
 
     return res.json(rooms);
   } catch (error) {
