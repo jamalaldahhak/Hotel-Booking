@@ -1,8 +1,14 @@
 
-import mongoose from "mongoose";
 import * as reservationService from "../services/reservationService.js";
 
-export async function checkAvailability(req, res, next) {
+const handleError = (res, error) => {
+  return res.status(error.status || 500).json({
+    success: false,
+    message: error.status ? error.message : "Internal server error",
+  });
+};
+
+export async function checkAvailability(req, res) {
   try {
     const { checkIn, checkOut } = req.query;
 
@@ -24,17 +30,11 @@ export async function checkAvailability(req, res, next) {
       data: rooms,
     });
   } catch (error) {
-    next(error);
+    return handleError(res, error);
   }
 }
-const fail = (message, status) => {
-  const error = new Error(message);
-  error.status = status;
-  throw error;
-};
 
-
-export async function createReservation(req, res, next) {
+export async function createReservation(req, res) {
   try {
     const reservation =
       await reservationService.createReservation(req.body);
@@ -45,12 +45,11 @@ export async function createReservation(req, res, next) {
       data: reservation,
     });
   } catch (error) {
-    next(error);
+    return handleError(res, error);
   }
 }
 
-
-export async function getReservations(req, res, next) {
+export async function getReservations(req, res) {
   try {
     const result = await reservationService.getReservations(
       req.query
@@ -61,11 +60,11 @@ export async function getReservations(req, res, next) {
       ...result,
     });
   } catch (error) {
-    next(error);
+    return handleError(res, error);
   }
 }
 
-export async function getReservationById(req, res, next) {
+export async function getReservationById(req, res) {
   try {
     const reservation =
       await reservationService.getReservationById(req.params.id);
@@ -75,11 +74,11 @@ export async function getReservationById(req, res, next) {
       data: reservation,
     });
   } catch (error) {
-    next(error);
+    return handleError(res, error);
   }
 }
 
-export async function cancelReservation(req, res, next) {
+export async function cancelReservation(req, res) {
   try {
     const reservation =
       await reservationService.cancelReservation(req.params.id);
@@ -90,6 +89,6 @@ export async function cancelReservation(req, res, next) {
       data: reservation,
     });
   } catch (error) {
-    next(error);
+    return handleError(res, error);
   }
 }

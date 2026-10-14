@@ -2,9 +2,9 @@
 import express from "express";
 import roomRouter from "./Router/roomRoutes.js";
 import reservationRouter from "./Router/reservationRoutes.js";
-
+import cors from "cors";
 const app = express();
-
+app.use(cors());
 app.use(express.json());
 app.use("/api/rooms", roomRouter);
 app.get("/api", (req, res) => {

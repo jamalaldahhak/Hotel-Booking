@@ -3,12 +3,14 @@ import mongoose from "mongoose";
 import Room from "../Model/Room.js";
 import Reservation from "../Model/Reservation.js";
 
+// إنشاء خطأ مع تحديد HTTP status
 const fail = (message, status) => {
   const error = new Error(message);
   error.status = status;
   throw error;
 };
 
+// التحقق من التاريخ وتحويله إلى Date
 const parseDate = (value) => {
   if (
     typeof value !== "string" ||
@@ -29,6 +31,7 @@ const parseDate = (value) => {
   return date;
 };
 
+// التحقق من الفترة وحساب عدد الليالي
 const getDateRange = (checkIn, checkOut) => {
   const start = parseDate(checkIn);
   const end = parseDate(checkOut);
@@ -42,13 +45,19 @@ const getDateRange = (checkIn, checkOut) => {
   return { start, end, totalNights };
 };
 
+// شرط البحث عن الحجوزات المتداخلة
 const overlapFilter = (start, end) => ({
   checkIn: { $lt: end },
   checkOut: { $gt: start },
 });
 
+// الحالات التي تمنع حجز الغرفة مرة ثانية
+const activeReservationFilter = {
+  status: { $in: ["Confirmed", "CheckedIn"] },
+};
 
-export async function getReservations(query = {}) {
+// جلب الحجوزات مع الفلترة وتقسيم الصفحات
+export const getReservations = async (query = {}) => {
   const page = Math.max(
     1,
     Number.parseInt(query.page, 10) || 1
@@ -62,20 +71,39 @@ export async function getReservations(query = {}) {
   const filter = {};
 
   if (query.status) {
+    const allowedStatuses = [
+      "Confirmed",
+      "Cancelled",
+      "CheckedIn",
+      "CheckedOut",
+    ];
+
+    if (!allowedStatuses.includes(query.status)) {
+      fail("Invalid reservation status", 400);
+    }
+
     filter.status = query.status;
   }
 
   if (query.roomId) {
+    if (!mongoose.isValidObjectId(query.roomId)) {
+      fail("Invalid room ID", 400);
+    }
+
     filter.roomId = query.roomId;
   }
 
   if (query.customerPhone) {
+    if (typeof query.customerPhone !== "string") {
+      fail("Invalid customer phone", 400);
+    }
+
     filter.customerPhone = query.customerPhone.trim();
   }
 
   const [reservations, total] = await Promise.all([
     Reservation.find(filter)
-      .populate("roomId", "roomNumber roomType roomCategory")
+      .populate("roomId", "roomNumber roomType roomCategory pricePerNight")
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit),
@@ -84,7 +112,7 @@ export async function getReservations(query = {}) {
   ]);
 
   return {
-    reservations,
+    data: reservations,
     pagination: {
       total,
       page,
@@ -92,30 +120,35 @@ export async function getReservations(query = {}) {
       totalPages: Math.ceil(total / limit),
     },
   };
-}
+};
+
+// جلب الغرف المتاحة ضمن فترة محددة
 export const getAvailableRooms = async (checkIn, checkOut) => {
   const { start, end } = getDateRange(checkIn, checkOut);
 
-  const bookedRoomIds = await Reservation.find(
-    overlapFilter(start, end)
-  ).distinct("roomId");
+  const bookedRoomIds = await Reservation.find({
+    ...activeReservationFilter,
+    ...overlapFilter(start, end),
+  }).distinct("roomId");
 
   return Room.find({
     _id: { $nin: bookedRoomIds },
   }).sort({ roomNumber: 1 });
 };
 
-
-
+// إنشاء حجز جديد
 export const createReservation = async (data) => {
-
   const {
     roomId,
     customerFullName,
     customerPhone,
     checkIn,
     checkOut,
-  } = data;
+  } = data ?? {};
+
+  if (!mongoose.isValidObjectId(roomId)) {
+    fail("Invalid room ID", 400);
+  }
 
   if (
     typeof customerFullName !== "string" ||
@@ -125,7 +158,6 @@ export const createReservation = async (data) => {
     fail("Valid customer name is required", 400);
   }
 
-  // التحقق من رقم الهاتف
   if (
     typeof customerPhone !== "string" ||
     !/^\+?[0-9\s()-]{7,20}$/.test(customerPhone.trim())
@@ -133,23 +165,20 @@ export const createReservation = async (data) => {
     fail("Valid customer phone is required", 400);
   }
 
-  // التحقق من التاريخين وحساب عدد الليالي
   const { start, end, totalNights } = getDateRange(
     checkIn,
     checkOut
   );
 
-  // جلب الغرفة وسعر الليلة من قاعدة البيانات
   const room = await Room.findById(roomId);
 
   if (!room) {
     fail("Room not found", 404);
   }
 
-  // التأكد من عدم وجود حجز متداخل غير ملغى
   const conflict = await Reservation.exists({
     roomId: room._id,
-    status: { $in: ["Confirmed", "CheckedIn"] },
+    ...activeReservationFilter,
     ...overlapFilter(start, end),
   });
 
@@ -157,12 +186,10 @@ export const createReservation = async (data) => {
     fail("Room is already booked for these dates", 409);
   }
 
-  // حساب السعر الإجمالي من سعر الغرفة
   const totalPrice = Number(
     (totalNights * room.pricePerNight).toFixed(2)
   );
 
-  // حفظ الحجز بالأسماء المطابقة للـ Model
   return Reservation.create({
     roomId: room._id,
     customerFullName: customerFullName.trim(),
@@ -172,16 +199,11 @@ export const createReservation = async (data) => {
     nights: totalNights,
     pricePerNight: room.pricePerNight,
     totalPrice,
+    status: "Confirmed",
   });
 };
 
-
-export const getAllReservations = async () => {
-  return Reservation.find()
-    .populate("roomId", "roomNumber roomType pricePerNight")
-    .sort({ createdAt: -1 });
-};
-
+// جلب حجز واحد حسب ID
 export const getReservationById = async (id) => {
   if (!mongoose.isValidObjectId(id)) {
     fail("Invalid reservation ID", 400);
@@ -189,7 +211,7 @@ export const getReservationById = async (id) => {
 
   const reservation = await Reservation.findById(id).populate(
     "roomId",
-    "roomNumber roomType pricePerNight"
+    "roomNumber roomType roomCategory pricePerNight"
   );
 
   if (!reservation) {
@@ -199,16 +221,26 @@ export const getReservationById = async (id) => {
   return reservation;
 };
 
-export const deleteReservation = async (id) => {
+// إلغاء الحجز دون حذفه نهائياً
+export const cancelReservation = async (id) => {
   if (!mongoose.isValidObjectId(id)) {
     fail("Invalid reservation ID", 400);
   }
 
-  const reservation = await Reservation.findByIdAndDelete(id);
+  const reservation = await Reservation.findById(id);
 
   if (!reservation) {
     fail("Reservation not found", 404);
   }
 
-  return { message: "Reservation cancelled successfully" };
+  if (reservation.status !== "Confirmed") {
+    fail("Only confirmed reservations can be cancelled", 409);
+  }
+
+  reservation.status = "Cancelled";
+  reservation.cancelledAt = new Date();
+
+  await reservation.save();
+
+  return reservation;
 };
