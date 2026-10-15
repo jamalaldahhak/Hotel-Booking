@@ -42,12 +42,21 @@ const handleError = (res, error) => {
   });
 };
 
+
 export const getRoomsController = async (req, res) => {
   try {
     const sortField = req.query._sort || "roomNumber";
     const sortOrder = req.query._order || "ASC";
+    const start = Number(req.query.start ?? 0);
+    const end = Number(req.query.end ?? 10);
 
-    if (!["ASC", "DESC"].includes(sortOrder)) {
+    if (
+      !["ASC", "DESC"].includes(sortOrder) ||
+      !Number.isInteger(start) ||
+      !Number.isInteger(end) ||
+      start < 0 ||
+      end <= start
+    ) {
       return res.status(400).json({
         message: "Invalid pagination or sorting parameters",
       });
@@ -56,6 +65,8 @@ export const getRoomsController = async (req, res) => {
     const rooms = await getAllRoomsService({
       sortField,
       sortOrder,
+      start,
+      end,
     });
 
     return res.json(rooms);
@@ -63,6 +74,7 @@ export const getRoomsController = async (req, res) => {
     return handleError(res, error);
   }
 };
+
 
 export const getRoomByIdController = async (req, res) => {
   try {
